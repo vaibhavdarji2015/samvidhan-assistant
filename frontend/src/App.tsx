@@ -35,6 +35,8 @@ const LANGUAGES = [
   { code: 'ta-IN', name: 'Tamil (தமிழ்)' }
 ] as const;
 
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 export default function App() {
   const [query, setQuery] = useState('');
   const [language, setLanguage] = useState<string>(LANGUAGES[0].code);
@@ -48,7 +50,7 @@ export default function App() {
   const askMutation = useMutation<QueryResponse, AxiosError, QueryRequest>({
     mutationFn: async (payload) => {
       // Connects to the local FastAPI backend
-      const response = await axios.post<QueryResponse>('http://localhost:8000/api/ask', payload);
+      const response = await axios.post<QueryResponse>(`${API_BASE}/api/ask`, payload);
       return response.data;
     }
   });
@@ -57,7 +59,7 @@ export default function App() {
   const askAudioMutation = useMutation<QueryResponse, AxiosError, FormData>({
     mutationFn: async (formData) => {
       // Connects to the local FastAPI backend
-      const response = await axios.post<QueryResponse>('http://localhost:8000/api/ask-audio', formData);
+      const response = await axios.post<QueryResponse>(`${API_BASE}/api/ask-audio`, formData);
       return response.data;
     }
   });
