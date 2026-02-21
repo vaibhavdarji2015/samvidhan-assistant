@@ -23,6 +23,10 @@ interface QueryResponse {
   audio_base64?: string;
 }
 
+interface ApiError {
+  detail?: string;
+}
+
 // Reusable language configurations
 const LANGUAGES = [
   { code: 'hi-IN', name: 'Hindi (हिंदी)' },
@@ -190,7 +194,7 @@ export default function App() {
             <div>
               <h4 className="font-semibold">Failed to fetch answer</h4>
               <p className="text-sm mt-1 opacity-90">
-                {errorObj?.response?.data?.detail || errorObj?.message || 'An unexpected server error occurred.'}
+                {(errorObj?.response?.data as ApiError)?.detail || errorObj?.message || 'An unexpected server error occurred.'}
               </p>
             </div>
           </div>
