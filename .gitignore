@@ -1,7 +1,8 @@
 #Python
 backend/.venv/
-backend/__pycache__/
+__pycache__/
 backend/.env
+*.pyc
 
 
 # FAISS Vector Database (Generated locally, no need to track)

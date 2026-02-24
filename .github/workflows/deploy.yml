@@ -1,0 +1,75 @@
+name: Deploy Full Stack App
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy-backend-cloud-run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: tensile-splice-457106-j7
+      
+      - name: Configure Docker to use Google Artifact Registry
+        run: gcloud auth configure-docker asia-south1-docker.pkg.dev
+
+      - name: Build and Push Docker Container
+        run: |
+          docker build -t asia-south1-docker.pkg.dev/tensile-splice-457106-j7/samvidhan-backend/api:latest ./backend
+          docker push asia-south1-docker.pkg.dev/tensile-splice-457106-j7/samvidhan-backend/api:latest
+
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: samvidhan-api
+          region: asia-south1
+          image: asia-south1-docker.pkg.dev/tensile-splice-457106-j7/samvidhan-backend/api:latest
+          env_vars: |
+            SARVAM_API_KEY=${{ secrets.SARVAM_API_KEY }}
+
+  deploy-frontend-firebase:
+    runs-on: ubuntu-latest
+    needs: deploy-backend-cloud-run
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Dependencies & Build Frontend
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+        env:
+          VITE_API_BASE_URL: ${{ secrets.VITE_API_URL }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.GCP_SA_KEY }}
+          projectId: tensile-splice-457106-j7
+          channelId: live
+          entryPoint: ./frontend
