@@ -3,6 +3,7 @@ backend/.venv/
 backend/__pycache__/
 backend/.env
 
+
 # FAISS Vector Database (Generated locally, no need to track)
 backend/faiss_index/
 
@@ -10,3 +11,18 @@ backend/faiss_index/
 frontend/node_modules/
 frontend/dist/
 frontend/.env
+
+# Security / Secrets
+backend/gcp-credentials.json
+*.env
+
+# Large SDKs & Installers
+google-cloud-sdk/
+*.tar.gz
+
+# Firebase Cache
+frontend/.firebase/
+
+# Test files (Keep repo clean)
+backend/test_*.py
+backend/test_object.txt

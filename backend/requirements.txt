@@ -5,7 +5,12 @@ requests
 python-dotenv
 pypdf
 langchain
+langchain-core
 langchain-community
 langchain-huggingface
 sentence-transformers
 faiss-cpu
+google-cloud-storage
+google-cloud-vision
+fpdf
+firebase-admin
