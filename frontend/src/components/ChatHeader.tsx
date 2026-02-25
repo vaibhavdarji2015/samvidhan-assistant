@@ -58,7 +58,9 @@ export function ChatHeader({ language, setLanguage }: { language: string, setLan
 
   return (
     <div className="flex items-center gap-4 p-6 border-b border-slate-100 shrink-0 bg-white rounded-t-2xl">
-      <div className="bg-blue-50 p-3 rounded-xl"><BookOpen className="w-7 h-7 text-blue-600" /></div>
+      <div className="flex-shrink-0">
+        <img src="/samvidhan-icon.svg" alt="Samvidhan Logo" className="w-12 h-12 drop-shadow-sm hover:scale-105 transition-transform" />
+      </div>
       <div>
         <h1 className="text-xl font-bold text-slate-800 tracking-tight">Samvidhan Agent</h1>
         <p className="text-slate-500 text-sm">Civic Rights & Issue Resolution</p>
