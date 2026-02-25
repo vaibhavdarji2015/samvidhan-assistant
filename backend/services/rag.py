@@ -32,7 +32,7 @@ def init_vector_store():
 
         loader = PyPDFLoader(pdf_path)
         docs = loader.load()
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=250)
         split_chunks = text_splitter.split_documents(docs)
         vector_store = FAISS.from_documents(documents=split_chunks, embedding=embeddings)
         vector_store.save_local(index_path)
@@ -61,8 +61,8 @@ def process_rag_pipeline(english_query: str, target_language: str, chat_history:
     search_query = english_query
     if extracted_text and len(english_query) < 20:
         search_query += " " + extracted_text[:200]
-        
-    docs = vector_store.similarity_search(search_query, k=3)
+    
+    docs = vector_store.similarity_search(search_query, k=5)
     context = "\n".join([doc.page_content for doc in docs])
 
     # 3. Format Chat History (Memory)
@@ -79,15 +79,23 @@ def process_rag_pipeline(english_query: str, target_language: str, chat_history:
         formatted_history = "\n".join(history_lines)
 
     # 4. The Agentic Prompt (Personalized for your app)
-    system_prompt = f"""You are the backend AI for 'Samvidhan Assistant', an Indian Constitutional Rights platform.
+    system_prompt = f"""You are the Samvidhan Assistant, an empathetic legal advisor for Indian Constitutional Law and Civic Rights.
 You are currently speaking to a citizen named: {user_name}. 
-Your goal is to inform users of their constitutional rights AND help them report local infrastructure failures or consumer issues.
 
-INSTRUCTIONS:
-1. If the user asks a general legal question, use the LEGAL CONTEXT to answer clearly.
-2. If the user wants to file a civic complaint, ask them for specific details (location, nature of hazard, pharmacy name, etc.) step-by-step.
-3. If the user explicitly asks you to draft, prepare, or write the formal complaint/document (and you have enough details), you MUST include this exact tag at the very end of your response: [ACTION: DRAFT_DOCUMENT]
-4. CRITICAL: NEVER hallucinate, invent, or provide direct PDF links or URLs (e.g. https://storage.googleapis...) in your text response. ALWAYS rely only on the [ACTION: DRAFT_DOCUMENT] tag.
+CRITICAL FORMATTING RULES - YOU MUST OBEY THESE:
+1. Speak exclusively in flowing, conversational paragraphs. 
+2. ABSOLUTELY NO LISTS. You are strictly forbidden from using bullet points, numbered lists, or dashes.
+3. ABSOLUTELY NO BOLDING. Do not use asterisks (**) for formatting. 
+4. DO NOT ask the user for a checklist of items (e.g., do not say "Please provide: Location, Date, Name"). 
+5. Instead, ask ONE natural question at the end to keep the conversation going, like a real human.
+
+HOW TO ANSWER:
+Read the LEGAL CONTEXT. Weave the exact Articles or laws naturally into your sentences. Empathize with their situation first, explain the law as a story, and then ask how you can help them take action.
+
+AUTO-DRAFTING:
+If the user asks you to draft a formal complaint/document, evaluate if you have enough basic details (like the company/department name, location, and the core issue). 
+- If you DO NOT have enough details, ask the user for them naturally in a paragraph. CRITICAL: DO NOT include the [ACTION: DRAFT_DOCUMENT] tag if you are still asking for details.
+- ONLY include the [ACTION: DRAFT_DOCUMENT] tag at the very end of your response IF the user has already provided the details and you are ready to generate the final file.
 
 PREVIOUS CONVERSATION:
 {formatted_history}
@@ -118,7 +126,7 @@ LEGAL CONTEXT:
     chat_response.raise_for_status()
     english_answer = chat_response.json().get("choices")[0].get("message").get("content")
 
-    # --- NEW: AGENTIC ACTION INTERCEPTOR ---
+    # --- AGENTIC ACTION INTERCEPTOR ---
     pdf_link_markdown = ""
     if "[ACTION: DRAFT_DOCUMENT]" in english_answer:
         print("Agent triggered document generation implicitly!")
@@ -136,45 +144,39 @@ LEGAL CONTEXT:
         
         # 3. Automatically run the extractor and PDF generator
         try:
-            legal_data = extract_legal_document_data(chat_history)
+            legal_data = extract_legal_document_data(chat_history, user_name)
             pdf_url = generate_legal_document_pdf(
                 document_type=legal_data.get("document_type", "Formal Legal Representation"),
                 addressee_title=legal_data.get("addressee_title", "To the Concerned Authority"),
                 addressee_address=legal_data.get("addressee_address", "Appropriate Government Office"),
                 subject=legal_data.get("subject", "Formal Representation regarding Violation of Rights"),
                 body_text=legal_data.get("body_text", "Please find the details of my grievance enclosed."),
-                applicant_name=legal_data.get("applicant_name", "Concerned Citizen"),
-                # Just pass the first evidence link to trigger the 'Enclosures' text in the PDF
+                applicant_name=legal_data.get("applicant_name", user_name),
                 evidence_url=evidence_links[0] if evidence_links else None
             )
             if pdf_url:
                 generated_filename = pdf_url.split('/')[-1]
-                # 4. Construct the Multi-File Response for the Chat UI
                 pdf_link_markdown = f"\n\n📄 Your Legal Documents:\n[{generated_filename}]({pdf_url})"
-
-                # Only generate the ZIP if there is actually evidence to bundle
+                
                 if evidence_links:
                     pdf_link_markdown += f"\n\n📎 Annexures (Evidence):"
                     for i, link in enumerate(evidence_links, 1):
                         evidence_name = link.split('/')[-1]
                         clean_evidence_name = evidence_name.split('-', 5)[-1] if '-' in evidence_name else evidence_name
                         pdf_link_markdown += f"\n[{clean_evidence_name}]({link})"
-                        
-                    # --- NEW: Generate and append the ZIP bundle ---
+                    
                     try:
                         zip_url = create_and_upload_zip(pdf_url, evidence_links)
                         if zip_url:
-                            pdf_link_markdown += f"\n\n📦 [Download Entire Case Bundle (.zip)]({zip_url})"
+                            pdf_link_markdown += f"\n\n[Download Entire Case Bundle (.zip)]({zip_url})"
                     except Exception as zip_e:
                         print(f"Agent failed to bundle ZIP: {zip_e}")
 
         except Exception as e:
             print(f"Agent failed to auto-draft: {e}")
-
-    # 6. Translate back to Indic language
+    
     final_answer = translate_text(text=english_answer, source_language="en-IN", target_language=target_language)
     
-    # 7. Append PDF link to the final translated response
     if pdf_link_markdown:
         final_answer += pdf_link_markdown
         english_answer += pdf_link_markdown

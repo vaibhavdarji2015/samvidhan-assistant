@@ -1,7 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
 
-// Your web app's Firebase configuration
 const firebaseConfig = {
     apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
     authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -16,6 +16,7 @@ const app = initializeApp(firebaseConfig);
 
 // 3. Initialize the Authentication Service
 export const auth = getAuth(app);
+export const db = getFirestore(app);
 
 // 4. Setup the Google Sign-In Provider
 export const googleProvider = new GoogleAuthProvider();

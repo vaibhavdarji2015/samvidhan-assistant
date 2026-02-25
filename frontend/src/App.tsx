@@ -8,6 +8,7 @@ import { ChatInput } from './components/ChatInput';
 import { ChatHeader } from './components/ChatHeader';
 import { MessageList } from './components/MessageList';
 import { LoginScreen } from './components/LoginScreen';
+import { Sidebar } from './components/Sidebar';
 import { Button } from './components/ui/button';
 import { Mail, Loader2 } from 'lucide-react';
 import { auth } from './lib/firebase';
@@ -126,14 +127,17 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col items-center py-6 px-4 font-sans">
-      <div className="w-full max-w-4xl bg-white shadow-xl rounded-2xl border border-slate-100 flex flex-col h-[90vh]">
-        <ChatHeader language={language} setLanguage={setLanguage} />
-        <ChatContext.Provider value={chatState}>
-          <MessageList />
-          <ChatInput />
-        </ChatContext.Provider>
-      </div>
+    <div className="h-screen w-full bg-white flex font-sans overflow-hidden">
+      <ChatContext.Provider value={chatState}>
+        <Sidebar />
+        <div className="flex-1 flex flex-col h-screen overflow-hidden bg-white">
+          <ChatHeader language={language} setLanguage={setLanguage} />
+          <div className="flex-1 w-full mx-auto flex flex-col overflow-hidden px-4 md:px-0 relative pt-2">
+            <MessageList />
+            <ChatInput />
+          </div>
+        </div>
+      </ChatContext.Provider>
     </div>
   );
 }

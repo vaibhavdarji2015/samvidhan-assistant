@@ -8,7 +8,7 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
   const isSystem = msg.role === 'system';
 
   return (
-    <div className={`flex gap-3 max-w-[85%] animate-in slide-in-from-bottom-2 ${isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}>
+    <div id={`msg-${msg.id}`} className={`flex gap-3 max-w-[85%] animate-in slide-in-from-bottom-2 ${isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}>
       {/* Avatar */}
       <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${isUser ? 'bg-blue-100 text-blue-600' :
         isSystem ? 'bg-red-100 text-red-600' : 'bg-slate-200 text-slate-600'

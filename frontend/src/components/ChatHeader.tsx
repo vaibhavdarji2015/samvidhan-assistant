@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { BookOpen, Check, ChevronsUpDown, LogOut, User, LayoutDashboard, Settings } from 'lucide-react';
+import { BookOpen, Check, ChevronsUpDown, LogOut, User, Settings } from 'lucide-react';
 import { ProfileSettings } from './ProfileSettings';
 import { Preferences } from './Preferences';
 import { cn } from "@/lib/utils";
@@ -28,6 +28,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from '../context/AuthContext';
 import { auth } from '../lib/firebase';
+import { getInitials } from '../lib/utils';
 
 const LANGUAGES = [
   { code: 'en-IN', name: 'English (English)' },
@@ -48,8 +49,12 @@ export function ChatHeader({ language, setLanguage }: { language: string, setLan
   const [showProfile, setShowProfile] = React.useState(false);
   const [showPreferences, setShowPreferences] = React.useState(false);
   const { currentUser } = useAuth();
-
-  const initials = currentUser?.email ? currentUser.email.substring(0, 2).toUpperCase() : 'U';
+  let initials = 'U';
+  if (currentUser?.displayName) {
+    initials = getInitials(currentUser.displayName);
+  } else if (currentUser?.email) {
+    initials = currentUser.email.substring(0, 2).toUpperCase();
+  }
 
   return (
     <div className="flex items-center gap-4 p-6 border-b border-slate-100 shrink-0 bg-white rounded-t-2xl">
@@ -127,10 +132,6 @@ export function ChatHeader({ language, setLanguage }: { language: string, setLan
               <DropdownMenuItem className="cursor-pointer" onClick={() => setShowProfile(true)}>
                 <User className="mr-2 h-4 w-4" />
                 <span>Profile Settings</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem className="cursor-pointer">
-                <LayoutDashboard className="mr-2 h-4 w-4" />
-                <span>My Complaints</span>
               </DropdownMenuItem>
               <DropdownMenuItem className="cursor-pointer" onClick={() => setShowPreferences(true)}>
                 <Settings className="mr-2 h-4 w-4" />

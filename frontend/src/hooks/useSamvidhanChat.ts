@@ -1,15 +1,99 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import axios from 'axios';
 import type { ChatMessage, QueryRequest, QueryResponse, Attachment } from '../types/chat';
-import { auth } from '../lib/firebase';
+import { auth, db } from '../lib/firebase';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"; // Adjust as needed for production
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 export function useSamvidhanChat(language: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pendingAttachments, setPendingAttachments] = useState<Attachment[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [activeChatId, setActiveChatId] = useState<string>(() => {
+    return localStorage.getItem('samvidhan_active_chat') || crypto.randomUUID();
+  });
+
+  const loadChat = async (chatId: string) => {
+    if (!auth.currentUser) return;
+
+    // CRUCIAL: Clear messages before switching activeChatId! 
+    // This stops saveToCloud from saving the old chat's messages into the new chat's Firestore document.
+    setMessages([]);
+    setActiveChatId(chatId);
+    localStorage.setItem('samvidhan_active_chat', chatId);
+
+    try {
+      const docRef = doc(db, 'users', auth.currentUser.uid, 'chats', chatId);
+      const snap = await getDoc(docRef);
+      if (snap.exists() && snap.data().messages) {
+        setMessages(snap.data().messages);
+      } else {
+        setMessages([]);
+      }
+    } catch (error) {
+      console.error("Failed to load chat:", error);
+    }
+  };
+
+  const createNewChat = () => {
+    const newId = crypto.randomUUID();
+    setActiveChatId(newId);
+    localStorage.setItem('samvidhan_active_chat', newId);
+    setMessages([]);
+  };
+
+  // 1. Download past conversation when citizen logs in
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        // Resolve latest chat intentionally bypassing closure staleness
+        const initialChat = localStorage.getItem('samvidhan_active_chat') || activeChatId;
+        loadChat(initialChat);
+      } else {
+        setMessages([]); // Clear on logout
+      }
+    });
+    return () => unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 2. Instantly save updates to the cloud when messages change
+  useEffect(() => {
+    if (!auth.currentUser || messages.length === 0) return;
+
+    // Prevent syncing temporary Blob URLs to the cloud
+    const hasBlobs = messages.some(m =>
+      m.evidence_urls?.some(url => url.startsWith('blob:'))
+    );
+    if (hasBlobs) return;
+
+    const saveToCloud = async () => {
+      try {
+        const docRef = doc(db, 'users', auth.currentUser!.uid, 'chats', activeChatId);
+
+        const firestoreSafeMessages = JSON.parse(JSON.stringify(messages));
+
+        // Generate a preview title from the first user message
+        const firstUserMsg = messages.find(m => m.role === 'user');
+        const title = firstUserMsg ? firstUserMsg.content.substring(0, 50) + '...' : 'New Complaint';
+
+        await setDoc(docRef, {
+          chatId: activeChatId,
+          title: title,
+          updatedAt: serverTimestamp(),
+          messages: firestoreSafeMessages
+        }, { merge: true });
+
+      } catch (error) {
+        console.error("Failed to sync chat history to cloud:", error);
+      }
+    };
+
+    saveToCloud();
+  }, [messages, activeChatId]);
 
   // Helper to extract clean history for the backend
   const getCleanHistory = useCallback(() => {
@@ -175,6 +259,9 @@ export function useSamvidhanChat(language: string) {
     sendVoiceMessage,
     pendingAttachments,
     setPendingAttachments,
-    language
+    language,
+    activeChatId,
+    loadChat,
+    createNewChat
   };
 }
