@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { BookOpen, Check, ChevronsUpDown, LogOut, User, Settings } from 'lucide-react';
+import { Check, ChevronsUpDown, LogOut, User, Settings } from 'lucide-react';
 import { ProfileSettings } from './ProfileSettings';
 import { Preferences } from './Preferences';
 import { cn } from "@/lib/utils";
