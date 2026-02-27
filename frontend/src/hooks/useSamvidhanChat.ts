@@ -74,7 +74,11 @@ export function useSamvidhanChat(language: string) {
       try {
         const docRef = doc(db, 'users', auth.currentUser!.uid, 'chats', activeChatId);
 
-        const firestoreSafeMessages = JSON.parse(JSON.stringify(messages));
+        // Strip bulky audio_base64 before sending to Firestore to prevent exceeding size limits
+        const firestoreSafeMessages = JSON.parse(JSON.stringify(messages)).map((m: any) => {
+          const { audio_base64, ...rest } = m;
+          return rest;
+        });
 
         // Generate a preview title from the first user message
         const firstUserMsg = messages.find(m => m.role === 'user');
@@ -138,8 +142,8 @@ export function useSamvidhanChat(language: string) {
   });
 
   // Voice Mutation
-  const askAudioMutation = useMutation<QueryResponse, Error, FormData>({
-    mutationFn: async (formData) => {
+  const askAudioMutation = useMutation<QueryResponse, Error, { formData: FormData, tempId: string }>({
+    mutationFn: async ({ formData }) => {
       // 1. Get the secure Firebase token
       const token = await auth.currentUser?.getIdToken();
       const { data } = await axios.post<QueryResponse>(
@@ -150,14 +154,23 @@ export function useSamvidhanChat(language: string) {
       );
       return data;
     },
-    onSuccess: (data) => {
-      setMessages((prev) => [...prev, {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: data.answer,
-        source_english: data.source_english,
-        audio_base64: data.audio_base64
-      }]);
+    onSuccess: (data, variables) => {
+      setMessages((prev) => {
+        const updatedUserMessages = prev.map(m => {
+          if (m.id === variables.tempId && data.transcribed_text) {
+            return { ...m, content: `${data.transcribed_text}` };
+          }
+          return m;
+        });
+
+        return [...updatedUserMessages, {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: data.answer,
+          source_english: data.source_english,
+          audio_base64: data.audio_base64
+        }];
+      });
     },
     onError: (error) => handleError(error, 'Failed to process voice query.')
   });
@@ -240,14 +253,15 @@ export function useSamvidhanChat(language: string) {
 
   // Handle Voice Recording Submission
   const sendVoiceMessage = useCallback(async (audioBlob: Blob) => {
-    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: '🎤 [Voice Message Sent]' }]);
+    const tempId = crypto.randomUUID();
+    setMessages((prev) => [...prev, { id: tempId, role: 'user', content: '🎤 [Processing voice message...]' }]);
 
     const formData = new FormData();
     formData.append('audio_file', audioBlob, 'recording.webm');
     formData.append('target_language', language);
     formData.append('chat_history_str', JSON.stringify(getCleanHistory()));
 
-    askAudioMutation.mutate(formData);
+    askAudioMutation.mutate({ formData, tempId });
   }, [language, askAudioMutation, getCleanHistory]);
 
   const isPending = isUploading || askMutation.isPending || askAudioMutation.isPending;

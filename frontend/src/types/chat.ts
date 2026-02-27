@@ -23,4 +23,5 @@ export interface QueryResponse {
   answer: string;
   source_english: string;
   audio_base64?: string;
+  transcribed_text?: string;
 }

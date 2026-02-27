@@ -21,6 +21,13 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: tensile-splice-457106-j7
+
+      - name: Download Vector Database from Cloud Storage
+        run: |
+          cd backend
+          # Assuming you upload them to a folder named 'database' in your main bucket
+          gsutil -m cp -r gs://${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}/database/faiss_index .
+          gsutil cp gs://${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}/database/bm25_index.pkl
       
       - name: Configure Docker to use Google Artifact Registry
         run: gcloud auth configure-docker asia-south1-docker.pkg.dev

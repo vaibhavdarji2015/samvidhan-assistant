@@ -15,6 +15,7 @@ class QueryResponse(BaseModel):
     answer: str
     source_english: str
     audio_base64: Optional[str] = None
+    transcribed_text: Optional[str] = None
 
 class UploadUrlRequest(BaseModel):
     filename: str

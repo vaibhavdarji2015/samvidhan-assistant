@@ -1,10 +1,13 @@
 import os
 import requests
+import pickle
 from typing import List, Tuple
-from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.document_loaders import PyPDFDirectoryLoader
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.retrievers import BM25Retriever
+from langchain_classic.retrievers import EnsembleRetriever
 
 from core.config import SARVAM_HEADERS
 from schemas.chat import Message
@@ -14,33 +17,38 @@ from services.extractor import extract_legal_document_data
 from services.pdf_generator import generate_legal_document_pdf
 from services.zip_generator import create_and_upload_zip
 
-# Global state for vector db
-vector_store = None
+# Global state for our Hybrid Retriever
+ensemble_retriever = None
 
 def init_vector_store():
-    """Initializes the FAISS index on startup."""
-    global vector_store
-    index_path = "faiss_index"
-    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    """Lightweight startup: ONLY loads pre-built indexes from disk."""
+    global ensemble_retriever
     
-    if os.path.exists(index_path):
+    index_path = "faiss_index"
+    bm25_path = "bm25_index.pkl"
+    
+    if os.path.exists(index_path) and os.path.exists(bm25_path):
+        print("Loading lightweight Hybrid Search databases...")
+        embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        
         vector_store = FAISS.load_local(index_path, embeddings, allow_dangerous_deserialization=True)
+        faiss_retriever = vector_store.as_retriever(search_kwargs={"k": 4})
+        
+        with open(bm25_path, "rb") as f:
+            bm25_retriever = pickle.load(f)
+            
+        ensemble_retriever = EnsembleRetriever(
+            retrievers=[bm25_retriever, faiss_retriever], weights=[0.5, 0.5]
+        )
     else:
-        pdf_path = "indian_constitution_2024.pdf"
-        if not os.path.exists(pdf_path):
-            raise FileNotFoundError(f"Required document '{pdf_path}' not found.")
-
-        loader = PyPDFLoader(pdf_path)
-        docs = loader.load()
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=250)
-        split_chunks = text_splitter.split_documents(docs)
-        vector_store = FAISS.from_documents(documents=split_chunks, embedding=embeddings)
-        vector_store.save_local(index_path)
+        print("⚠️ CRITICAL WARNING: Database files not found!")
+        print("Please run 'python build_db.py' to generate the indexes.")
+        ensemble_retriever = None
 
 def cleanup_vector_store():
     """Releases memory on shutdown."""
-    global vector_store
-    vector_store = None
+    global ensemble_retriever
+    ensemble_retriever = None
 
 def process_rag_pipeline(english_query: str, target_language: str, chat_history: List[Message], user_name: str = "Concerned Citizen") -> Tuple[str, str]:
     """Orchestrates RAG, OCR, Conversational Memory, and LLM Generation."""
@@ -55,14 +63,14 @@ def process_rag_pipeline(english_query: str, target_language: str, chat_history:
             print(f"Evidence URL detected: {url}")
             extracted_texts.append(f"--- Document {url} ---\n{extract_text_from_document(url)}")
         extracted_text = "\n\n".join(extracted_texts)
-        print(f"--- EXTRACTED OCR TEXT ---\n{extracted_text}\n--------------------------")
         
     # 2. Retrieve Legal Context
     search_query = english_query
     if extracted_text and len(english_query) < 20:
         search_query += " " + extracted_text[:200]
     
-    docs = vector_store.similarity_search(search_query, k=5)
+    # Fetch top documents using the combined powers of FAISS and BM25
+    docs = ensemble_retriever.invoke(search_query) if ensemble_retriever else []
     context = "\n".join([doc.page_content for doc in docs])
 
     # 3. Format Chat History (Memory)
@@ -78,7 +86,7 @@ def process_rag_pipeline(english_query: str, target_language: str, chat_history:
             history_lines.append(line)
         formatted_history = "\n".join(history_lines)
 
-    # 4. The Agentic Prompt (Personalized for your app)
+    # 4. The Agentic Prompt
     system_prompt = f"""You are the Samvidhan Assistant, an empathetic legal advisor for Indian Constitutional Law and Civic Rights.
 You are currently speaking to a citizen named: {user_name}. 
 
@@ -107,7 +115,6 @@ LEGAL CONTEXT:
     if extracted_text:
         system_prompt += f"\n\n[SYSTEM OCR ALERT: User attached an image. Raw text:\n\"\"\"{extracted_text}\"\"\"\nAnalyze this text immediately.]"
     
-    # Forcefully inject the OCR text into the user's message
     final_user_content = english_query
     if extracted_text:
         final_user_content += f"\n\n[USER UPLOADED DOCUMENT TEXT:]\n\"\"\"{extracted_text}\"\"\"\n[INSTRUCTION: Read the document text above and answer my query based ONLY on the details found inside it.]"

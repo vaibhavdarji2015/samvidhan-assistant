@@ -27,3 +27,14 @@ frontend/.firebase/
 # Test files (Keep repo clean)
 backend/test_*.py
 backend/test_object.txt
+backend/scrape_laws.py
+
+# Ignore the raw PDFs
+legal_library/
+
+# Ignore the generated databases
+faiss_index/
+bm25_index.pkl
+
+# Ignore temporary CSVs
+laws.csv

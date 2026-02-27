@@ -79,7 +79,8 @@ async def ask_constitution_audio(
         return QueryResponse(
             answer=final_answer,
             source_english=english_answer,
-            audio_base64=audio_base64
+            audio_base64=audio_base64,
+            transcribed_text=english_query
         )
 
     except requests.exceptions.HTTPError as e:
