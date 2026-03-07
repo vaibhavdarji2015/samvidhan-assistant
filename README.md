@@ -6,8 +6,6 @@ This project strictly adheres to professional standards of **Type Safety, Perfor
 
 ## 🏗 Architecture & Workflow
 
-*(Note: GitHub natively renders this Mermaid sequence diagram as an image)*
-
 ```mermaid
 graph TD
     A[User Input: Text/Audio in Regional Language] --> B(Frontend - React/Vite)
