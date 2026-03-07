@@ -43,7 +43,7 @@ jobs:
           service: samvidhan-api
           region: asia-south1
           image: asia-south1-docker.pkg.dev/tensile-splice-457106-j7/samvidhan-backend/api:latest
-          flags: --memory=4Gi --cpu=2
+          flags: --memory=8Gi --cpu=2
           env_vars: |
             SARVAM_API_KEY=${{ secrets.SARVAM_API_KEY }}
 
