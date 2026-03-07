@@ -1,5 +1,5 @@
 import json
-import requests
+import httpx
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
 from typing import List
 
@@ -15,15 +15,15 @@ router = APIRouter(prefix="/api", tags=["Chat"])
 @router.post("/ask", response_model=QueryResponse)
 async def ask_constitution(req: QueryRequest, user: dict = Depends(get_current_user)):
     try:
-        # 1. Translate Indic query to English
-        english_query = translate_text(
+        # 1. Translate Indic query to English (async)
+        english_query = await translate_text(
             text=req.query_text, 
             source_language=req.target_language, 
             target_language="en-IN"
         )
 
-        # 2. Run the centralized RAG pipeline WITH chat history
-        final_answer, english_answer = process_rag_pipeline(
+        # 2. Run the centralized RAG pipeline WITH chat history (async)
+        final_answer, english_answer = await process_rag_pipeline(
             english_query=english_query, 
             target_language=req.target_language,
             chat_history=req.chat_history,
@@ -34,8 +34,8 @@ async def ask_constitution(req: QueryRequest, user: dict = Depends(get_current_u
             answer=final_answer,
             source_english=english_answer
         )
-    except requests.exceptions.HTTPError as e:
-        error_detail = e.response.text if getattr(e, 'response', None) is not None else str(e)
+    except httpx.HTTPStatusError as e:
+        error_detail = e.response.text if hasattr(e, 'response') else str(e)
         raise HTTPException(status_code=502, detail=f"Sarvam API Error: {error_detail}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
@@ -53,28 +53,29 @@ async def ask_constitution_audio(
         raw_history = json.loads(chat_history_str)
         chat_history = [Message(**msg) for msg in raw_history]
 
-        # 1. Speech-to-Text: Get English translation directly from Indic audio
+        # 1. Speech-to-Text: Get English translation directly from Indic audio (async)
         stt_url = "https://api.sarvam.ai/speech-to-text-translate"
         files = {"file": (audio_file.filename, await audio_file.read(), audio_file.content_type)}
         stt_headers = {"API-Subscription-Key": SARVAM_API_KEY}
         
-        stt_response = requests.post(stt_url, files=files, headers=stt_headers)
-        stt_response.raise_for_status()
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            stt_response = await client.post(stt_url, files=files, headers=stt_headers)
+            stt_response.raise_for_status()
         
         english_query = stt_response.json().get("transcript")
         if not english_query:
             raise HTTPException(status_code=400, detail="Could not transcribe audio. Please try speaking clearly.")
 
-        # 2. Run the centralized RAG pipeline
-        final_answer, english_answer = process_rag_pipeline(
+        # 2. Run the centralized RAG pipeline (async)
+        final_answer, english_answer = await process_rag_pipeline(
             english_query=english_query, 
             target_language=target_language,
             chat_history=chat_history,
             user_name=user.get("name") or user.get("email") or "Concerned Citizen"
         )
 
-        # 3. Generate Indic Audio from the final translated answer
-        audio_base64 = generate_audio(text=final_answer, target_language=target_language)
+        # 3. Generate Indic Audio from the final translated answer (async)
+        audio_base64 = await generate_audio(text=final_answer, target_language=target_language)
         
         return QueryResponse(
             answer=final_answer,
@@ -83,8 +84,8 @@ async def ask_constitution_audio(
             transcribed_text=english_query
         )
 
-    except requests.exceptions.HTTPError as e:
-        error_detail = e.response.text if getattr(e, 'response', None) is not None else str(e)
+    except httpx.HTTPStatusError as e:
+        error_detail = e.response.text if hasattr(e, 'response') else str(e)
         raise HTTPException(status_code=502, detail=f"Sarvam API Error: {error_detail}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")

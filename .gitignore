@@ -32,9 +32,16 @@ backend/scrape_laws.py
 # Ignore the raw PDFs
 legal_library/
 
-# Ignore the generated databases
+# Ignore the generated databases and data stores
 faiss_index/
+backend/faiss_index/
+chroma_db/
+backend/chroma_db/
 bm25_index.pkl
+docstore.pkl
 
+# Ignore temporary zips and dumps
+*.zip
+dom_dump.txt
 # Ignore temporary CSVs
 laws.csv

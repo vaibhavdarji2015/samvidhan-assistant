@@ -26,7 +26,7 @@ jobs:
         run: |
           cd backend
           # Assuming you upload them to a folder named 'database' in your main bucket
-          gsutil -m cp -r gs://${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}/database/faiss_index .
+          gsutil -m cp -r gs://${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}/database/chroma_db .
           gsutil cp gs://${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}/database/bm25_index.pkl .
       
       - name: Configure Docker to use Google Artifact Registry
