@@ -301,19 +301,46 @@ LEGAL CONTEXT:
     # Bind the document drafting tool to the LLM
     chat_with_tools = chat.bind_tools([draft_legal_document])
     
-    messages = [SystemMessage(content=system_prompt)]
-    messages.extend(chat_messages)
-    messages.append(HumanMessage(content=final_user_content))
+    # Strict API formatting: Sarvam requires exact alternating User/Assistant messages starting with User.
+    # System messages and consecutive identical roles must be merged.
+    raw_messages = [SystemMessage(content=system_prompt)] + chat_messages + [HumanMessage(content=final_user_content)]
     
+    merged_messages = []
+    current_role = None
+    current_content = []
+    
+    for m in raw_messages:
+        # Treat SystemMessages as UserMessages for the final API payload
+        role = "user" if isinstance(m, (HumanMessage, SystemMessage)) else "assistant"
+        
+        if role == current_role:
+            current_content.append(m.content)
+        else:
+            if current_role is not None:
+                content_str = "\n\n".join(current_content)
+                if current_role == "user":
+                    merged_messages.append(HumanMessage(content=content_str))
+                else:
+                    merged_messages.append(AIMessage(content=content_str))
+            current_role = role
+            current_content = [m.content]
+            
+    if current_role is not None:
+        content_str = "\n\n".join(current_content)
+        if current_role == "user":
+            merged_messages.append(HumanMessage(content=content_str))
+        else:
+            merged_messages.append(AIMessage(content=content_str))
+            
     chat_response = None
     try:
-        chat_response = await chat_with_tools.ainvoke(messages)
+        chat_response = await chat_with_tools.ainvoke(merged_messages)
         english_answer = chat_response.content or ""
     except Exception as e:
         print(f"Error calling Sarvam via LangChain ChatOpenAI: {e}")
         # Fallback: try without tools in case the model doesn't support tool calling
         try:
-            chat_response = await chat.ainvoke(messages)
+            chat_response = await chat.ainvoke(merged_messages)
             english_answer = chat_response.content or ""
         except Exception as fallback_e:
             print(f"Fallback LLM call also failed: {fallback_e}")
