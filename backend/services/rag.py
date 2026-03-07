@@ -305,6 +305,7 @@ LEGAL CONTEXT:
     messages.extend(chat_messages)
     messages.append(HumanMessage(content=final_user_content))
     
+    chat_response = None
     try:
         chat_response = await chat_with_tools.ainvoke(messages)
         english_answer = chat_response.content or ""
@@ -316,12 +317,12 @@ LEGAL CONTEXT:
             english_answer = chat_response.content or ""
         except Exception as fallback_e:
             print(f"Fallback LLM call also failed: {fallback_e}")
-            english_answer = "I'm sorry, I am currently facing technical issues evaluating your request."
+            english_answer = "I'm sorry, I am currently facing technical issues evaluating your request. Please try again later."
 
     # --- AGENTIC ACTION: Handle Tool Calls from LLM ---
     pdf_link_markdown = ""
     
-    if hasattr(chat_response, 'tool_calls') and chat_response.tool_calls:
+    if chat_response and hasattr(chat_response, 'tool_calls') and chat_response.tool_calls:
         print("Agent triggered document generation via native Tool Call!")
         for tool_call in chat_response.tool_calls:
             if tool_call.get("name") == "draft_legal_document":
