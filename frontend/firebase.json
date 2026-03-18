@@ -1,6 +1,6 @@
 {
     "hosting": {
-        "site": "tensile-splice-457106-j7",
+        "site": "samvidhan-assistant-a2d34",
         "public": "dist",
         "ignore": [
             "firebase.json",
