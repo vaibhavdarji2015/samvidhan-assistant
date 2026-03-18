@@ -34,8 +34,8 @@ jobs:
 
       - name: Build and Push Docker Container
         run: |
-          docker build -t asia-south1-docker.pkg.dev/tensile-splice-457106-j7/samvidhan-backend/api:latest ./backend
-          docker push asia-south1-docker.pkg.dev/tensile-splice-457106-j7/samvidhan-backend/api:latest
+          docker build -t asia-south1-docker.pkg.dev/samvidhan-assistant-a2d34/samvidhan-backend/api:latest ./backend
+          docker push asia-south1-docker.pkg.dev/samvidhan-assistant-a2d34/samvidhan-backend/api:latest
 
       - name: Deploy to Cloud Run
         uses: google-github-actions/deploy-cloudrun@v2
