@@ -21,8 +21,8 @@ def upload_to_gcs(bucket_name, local_path, gcs_path):
                 blob.upload_from_filename(file_path)
                 print(f"Uploaded {file_path} to gs://{bucket_name}/{blob_path}")
 
-bucket = "samvidhan-evidence-bucket"
+bucket = "samvidhan-assistant-a2d34.firebasestorage.app"
 print(f"Uploading databases to {bucket}...")
 upload_to_gcs(bucket, "backend/bm25_index.pkl", "database/bm25_index.pkl")
-upload_to_gcs(bucket, "backend/faiss_index", "database/faiss_index")
+upload_to_gcs(bucket, "backend/chroma_db", "database/chroma_db")
 print("Done!")

@@ -20,7 +20,7 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
         with:
-          project_id: tensile-splice-457106-j7
+          project_id: samvidhan-assistant-a2d34
 
       - name: Download Vector Database from Cloud Storage
         run: |
@@ -42,7 +42,7 @@ jobs:
         with:
           service: samvidhan-api
           region: asia-south1
-          image: asia-south1-docker.pkg.dev/tensile-splice-457106-j7/samvidhan-backend/api:latest
+          image: asia-south1-docker.pkg.dev/samvidhan-assistant-a2d34/samvidhan-backend/api:latest
           flags: --memory=8Gi --cpu=2
           env_vars: |
             SARVAM_API_KEY=${{ secrets.SARVAM_API_KEY }}
@@ -78,6 +78,6 @@ jobs:
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.GCP_SA_KEY }}
-          projectId: tensile-splice-457106-j7
+          projectId: samvidhan-assistant-a2d34
           channelId: live
           entryPoint: ./frontend
