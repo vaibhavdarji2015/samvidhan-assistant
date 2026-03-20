@@ -45,3 +45,15 @@ docstore.pkl
 dom_dump.txt
 # Ignore temporary CSVs
 laws.csv
+
+# AI Generated Artifacts (Privacy & Cleanup)
+backend/static/generated/
+backend/*.zip
+backend/python-repo/cache.py
+backend/python-repo/__pycache__/
+backend/automate_build.py
+backend/eval.py
+backend/test_*.py
+
+# OS Files
+.DS_Store

@@ -23,21 +23,28 @@ def create_and_upload_zip(main_pdf_url: str, evidence_urls: list) -> str:
             # 1. Download and add the main drafted PDF
             if main_pdf_url:
                 pdf_name = main_pdf_url.split('/')[-1]
-                response = requests.get(main_pdf_url)
-                if response.status_code == 200:
-                    temp_pdf_path = f"/tmp/{pdf_name}"
-                    with open(temp_pdf_path, 'wb') as f:
-                        f.write(response.content)
-                    # Put it in the root of the ZIP
-                    zipf.write(temp_pdf_path, arcname=f"1_{pdf_name}")
-                    os.remove(temp_pdf_path)
+                
+                # Check if it's a local fallback URL
+                if "localhost:8000/static/generated/" in main_pdf_url:
+                    local_pdf_path = os.path.join(os.getcwd(), "static", "generated", pdf_name)
+                    if os.path.exists(local_pdf_path):
+                        zipf.write(local_pdf_path, arcname=f"1_{pdf_name}")
+                else:
+                    response = requests.get(main_pdf_url, timeout=10)
+                    if response.status_code == 200:
+                        temp_pdf_path = f"/tmp/{pdf_name}"
+                        with open(temp_pdf_path, 'wb') as f:
+                            f.write(response.content)
+                        # Put it in the root of the ZIP
+                        zipf.write(temp_pdf_path, arcname=f"1_{pdf_name}")
+                        os.remove(temp_pdf_path)
             # 2. Download and add all evidence files into an 'Annexures' folder
             for i, url in enumerate(evidence_urls, start=1):
                 evidence_name = url.split('/')[-1]
                 # Clean up the UUID prefix for a beautiful filename
                 clean_name = evidence_name.split('-', 5)[-1] if '-' in evidence_name else evidence_name
                 
-                response = requests.get(url)
+                response = requests.get(url, timeout=10)
                 if response.status_code == 200:
                     temp_ev_path = f"/tmp/{evidence_name}"
                     with open(temp_ev_path, 'wb') as f:

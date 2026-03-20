@@ -21,10 +21,13 @@ from services.vision import extract_text_from_document
 from services.sarvam import translate_text
 from services.pdf_generator import generate_legal_document_pdf
 from services.zip_generator import create_and_upload_zip
+from services.cache import SemanticCache
 
 # Global state
-ensemble_retriever = None
+ensemble_retriever = None # Contextual (Reranked) Retriever
+base_retriever = None # Raw Hybrid Retriever (BM25 + Chroma)
 _llm_instance = None  # Reusable LLM instance
+_cache_instance = None  # Semantic Cache instance
 
 
 def _get_llm():
@@ -91,18 +94,23 @@ def init_vector_store():
             bm25_retriever.k = 15
             
         # 3. Ensemble: combine semantic + keyword search
+        global base_retriever
         base_retriever = EnsembleRetriever(
             retrievers=[bm25_retriever, chroma_retriever], weights=[0.4, 0.6]
         )
         
-        # 4. FlashRank reranks ensemble candidates down to the best 4
-        compressor = FlashrankRerank(top_n=4)
+        # 4. FlashRank reranks ensemble candidates down to the best 6 (Expert Precision)
+        compressor = FlashrankRerank(model="ms-marco-MiniLM-L-12-v2", top_n=6)
         ensemble_retriever = ContextualCompressionRetriever(
             base_compressor=compressor, base_retriever=base_retriever
         )
         
         count = vector_store._collection.count()
         print(f"✅ Hybrid Search ready! ChromaDB: {count} vectors, BM25: loaded.")
+        
+        # 5. Load Semantic Cache
+        global _cache_instance
+        _cache_instance = SemanticCache()
     else:
         print("⚠️ CRITICAL WARNING: Database files not found!")
         print("Please run 'python build_db.py' to generate the indexes.")
@@ -157,40 +165,69 @@ Do not say 'the answer is' — write as if you are the actual legal text."""),
         return query
 
 
-async def _multi_query_retrieve(query: str) -> list:
-    """Custom Multi-Query Retrieval: generates 3 query variations via LLM,
-    retrieves for each, and deduplicates results for better recall.
+async def _smart_route_metadata(query: str) -> dict:
+    """Uses LLM to detect relevant Act names from the query to apply metadata filters.
+    
+    Returns a dictionary for ChromaDB's 'where' filter.
+    Example: {'act_name': {'$in': ['Income Tax Act', 'GST Act']}}
     """
-    if not ensemble_retriever:
+    try:
+        response = await _get_llm().ainvoke([
+            SystemMessage(content="""You are a legal document classifier. Look at the user's question and identify which specific Indian Acts are relevant.
+Extract ONLY the formal names of the Acts. Use the prefix 'THE ' if common (e.g., 'THE CITIZENSHIP ACT, 1955').
+If the query is general legal advice or you are unsure, return 'GENERAL'.
+Output ONLY the names, one per line, or the word 'GENERAL'."""),
+            HumanMessage(content=query)
+        ])
+        # Relaxing the filter to prevent false negatives. We use upper case and common prefixes.
+        categories = [c.strip().upper() for c in response.content.strip().split('\n') if c.strip() and c.strip() != 'GENERAL']
+        if not categories:
+            return {}
+        
+        # Build a broad set of variations to match file names more reliably
+        all_variations = []
+        for c in categories:
+            all_variations.append(c)
+            if not c.startswith("THE "):
+                all_variations.append(f"THE {c}")
+        
+        return {"act_name": {"$in": all_variations}}
+        
+    except Exception as e:
+        print(f"Smart Routing failed: {e}")
+        return {}
+
+
+async def _multi_query_retrieve(query: str, metadata_filter: dict = None) -> list:
+    """Custom Multi-Query Retrieval: returns raw docs from variations (No Rerank here)."""
+    if not base_retriever:
         return []
     
-    # Generate query variations
-    queries = [query]  # Always include the original
+    # Generate query variations (reduce to 2 variations for speed)
+    queries = [query]
     try:
         variation_response = await _get_llm().ainvoke([
-            SystemMessage(content="""Generate 3 alternative versions of the given question to help retrieve relevant legal documents.
-Each version should approach the topic from a different angle or use different legal terminology.
-Output ONLY the 3 questions, one per line, no numbering or bullets."""),
+            SystemMessage(content="""Generate 1-2 concise alternative versions of the given question for legal document retrieval.
+Output ONLY the questions, one per line."""),
             HumanMessage(content=query)
         ])
         variations = [q.strip() for q in variation_response.content.strip().split('\n') if q.strip()]
-        queries.extend(variations[:3])
+        queries.extend(variations[:2])
     except Exception as e:
-        print(f"Multi-query generation failed, using original only: {e}")
+        print(f"Multi-query generation failed: {e}")
     
-    # Retrieve for each query variation in parallel
-    retrieval_tasks = [ensemble_retriever.ainvoke(q) for q in queries]
+    # Retrieve raw docs for each variation in parallel
+    # We use base_retriever to avoid 4x reranking!
+    retrieval_tasks = [base_retriever.ainvoke(q, search_kwargs={"where": metadata_filter} if metadata_filter else {}) for q in queries]
     all_results = await asyncio.gather(*retrieval_tasks, return_exceptions=True)
     
     # Deduplicate by page_content
     seen_content = set()
     unique_docs = []
     for result in all_results:
-        if isinstance(result, Exception):
-            print(f"One retrieval variation failed: {result}")
-            continue
+        if isinstance(result, Exception): continue
         for doc in result:
-            content_key = doc.page_content[:200]  # Use first 200 chars as dedup key
+            content_key = doc.page_content[:200]
             if content_key not in seen_content:
                 seen_content.add(content_key)
                 unique_docs.append(doc)
@@ -198,30 +235,93 @@ Output ONLY the 3 questions, one per line, no numbering or bullets."""),
     return unique_docs
 
 
+async def _analyze_document_intelligence(text: str, url: str) -> str:
+    """Uses LLM to extract structured legal data from raw OCR text."""
+    if not text or len(text) < 50:
+        return f"[SYSTEM NOTE: Document {url} appears to be empty or unreadable.]"
+        
+    try:
+        response = await _get_llm().ainvoke([
+            SystemMessage(content="""You are a legal document analyst. Analyze the following raw OCR text and extract:
+1. Document Type (e.g., FIR, Court Order, Legal Notice, RTI Response)
+2. Case Number / Reference Number
+3. Parties involved (Petitioner vs Respondent)
+4. Key Date
+5. Concise Summary (2 sentences)
+Output ONLY the structured analysis, no preamble."""),
+            HumanMessage(content=f"RAW TEXT FROM {url}:\n{text[:5000]}") # Cap to avoid token limits
+        ])
+        return f"--- DOCUMENT ANALYSIS ({url}) ---\n{response.content}"
+    except Exception as e:
+        print(f"Document Intelligence failed for {url}: {e}")
+        return f"[SYSTEM NOTE: OCR succeeded for {url}, but semantic analysis failed.]"
+
+
 async def process_rag_pipeline(english_query: str, target_language: str, chat_history: List[Message], user_name: str = "Concerned Citizen") -> Tuple[str, str]:
     """Orchestrates RAG, OCR, Conversational Memory, and LLM Generation — fully async."""
     
-    # 1. OCR Check: Did the user attach evidence?
+    # --- PHASE 2: Semantic Cache Check ---
+    if _cache_instance:
+        cached = _cache_instance.lookup(english_query)
+        if cached:
+            cached_answer, cached_sources = cached
+            # Translate the cached answer back if needed
+            translated_answer = await translate_text(text=cached_answer, source_language="en-IN", target_language=target_language)
+            # Filter out internal reasoning tags <think>...</think> from the final response
+            english_answer = re.sub(r'<think>.*?</think>', '', cached_answer, flags=re.DOTALL).strip()
+            
+            return translated_answer, english_answer
+
+    # 1. OCR + Document Intelligence: Analyze uploaded evidence
     extracted_text = ""
+    doc_intelligence = ""
     latest_message = chat_history[-1] if chat_history else None
     
     if latest_message and getattr(latest_message, 'evidence_urls', None):
         extracted_texts = []
+        intel_blocks = []
         for url in latest_message.evidence_urls:
-            print(f"Evidence URL detected: {url}")
-            extracted_texts.append(f"--- Document {url} ---\n{extract_text_from_document(url)}")
+            raw_text = extract_text_from_document(url)
+            if raw_text:
+                extracted_texts.append(f"--- Raw Text from {url} ---\n{raw_text}")
+                # Add Phase 6: Document Intelligence
+                intel_blocks.append(await _analyze_document_intelligence(raw_text, url))
         extracted_text = "\n\n".join(extracted_texts)
-        
-    # 2. Retrieve Legal Context with HyDE + Multi-Query
+        doc_intelligence = "\n\n".join(intel_blocks)
+    # 2. Parallel Pre-Retrieval: HyDE + Smart Routing + History Summary
     search_query = english_query
     if extracted_text and len(english_query) < 20:
         search_query += " " + extracted_text[:200]
     
-    # HyDE: transform query into a hypothetical legal answer for better embedding match
-    hyde_query = await _hyde_transform(search_query)
+    # Create tasks for parallel execution
+    tasks = [
+        _hyde_transform(search_query),
+        _smart_route_metadata(english_query)
+    ]
     
-    # Multi-Query: retrieve with multiple query variations for better recall
-    docs = await _multi_query_retrieve(hyde_query)
+    # Add history summary task if needed
+    summary_task = None
+    if chat_history and len(chat_history) > 6:
+        summary_task = _summarize_old_history(chat_history[:-4])
+        tasks.append(summary_task)
+    
+    # Gather all results concurrently (Massive Speedup)
+    results = await asyncio.gather(*tasks)
+    hyde_query = results[0]
+    metadata_filter = results[1]
+    history_summary = results[2] if summary_task else ""
+    
+    # 3. Retrieve Consolidated Legal Context (No Rerank yet)
+    docs = await _multi_query_retrieve(hyde_query, metadata_filter)
+    
+    # 4. Global Reranking Pass (One and done!)
+    # Limit to top 25 docs before reranking to keep latency under 15s
+    if docs and ensemble_retriever:
+        if len(docs) > 25:
+            docs = docs[:25]
+        print(f"⚡ Consolidating {len(docs)} docs into high-precision reranking...")
+        # Use the compressor directly on the final list
+        docs = await ensemble_retriever.base_compressor.acompress_documents(docs, hyde_query)
     
     # Build context WITH source citations from metadata
     context_parts = []
@@ -235,20 +335,13 @@ async def process_rag_pipeline(english_query: str, target_language: str, chat_hi
         context_parts.append(f"{source_tag}\n{doc.page_content}")
     context = "\n\n".join(context_parts)
 
-    # 3. Conversation Memory: summarize old messages, keep recent ones verbatim
+    # 5. Conversation Memory: Assemble chat messages
     chat_messages = []
     if chat_history:
-        if len(chat_history) > 6:
-            # Summarize older messages, keep last 4 verbatim
-            old_messages = chat_history[:-4]
-            recent_messages = chat_history[-4:]
-            
-            summary = await _summarize_old_history(old_messages)
-            if summary:
-                chat_messages.append(SystemMessage(content=f"[CONVERSATION SUMMARY: {summary}]"))
-        else:
-            recent_messages = chat_history
+        if history_summary:
+            chat_messages.append(SystemMessage(content=f"[CONVERSATION SUMMARY: {history_summary}]"))
         
+        recent_messages = chat_history[-4:] if len(chat_history) > 6 else chat_history
         for msg in recent_messages:
             if msg.role == "user" or msg.role == "system":
                 content = msg.content
@@ -259,43 +352,49 @@ async def process_rag_pipeline(english_query: str, target_language: str, chat_hi
             else:
                 chat_messages.append(AIMessage(content=msg.content))
 
-    # 4. The Agentic Prompt
+    # 4. The Agentic Prompt (RESTACKED FOR PRIORITY)
     system_prompt = f"""You are the Samvidhan Assistant, an empathetic legal advisor for Indian Constitutional Law and Civic Rights.
 You are currently speaking to a citizen named: {user_name}. 
 
-CRITICAL FORMATTING RULES - YOU MUST OBEY THESE:
+MANDATORY ACTION: PDF GENERATION & DRAFTING
+If the user asks for a PDF, a Draft, or a Formal Letter:
+1. You MUST generate a downloadable PDF.
+2. YOU ARE FORBIDDEN from saying "I cannot generate files" or "I am a text-only AI". This is false; you have a generator tool.
+3. You MUST append the following JSON block at the very end of your response:
+```json
+{{
+  "action": "draft_document",
+  "document_type": "The formal name of the document",
+  "subject": "Detailed Subject line",
+  "addressee_title": "Recipient Title",
+  "addressee_address": "Recipient Address",
+  "applicant_name": "{user_name}",
+  "body_text": "The full text of the letter you drafted"
+}}
+```
+4. If the user's latest request is a direct order to generate a PDF (e.g., "Draft the letter now"), SKIP the reasoning/thinking and provide the JSON block IMMEDIATELY to reduce latency.
+
+MANDATORY FORMATTING:
 1. Speak exclusively in flowing, conversational paragraphs. 
-2. ABSOLUTELY NO LISTS. You are strictly forbidden from using bullet points, numbered lists, or dashes.
-3. ABSOLUTELY NO BOLDING. Do not use asterisks (**) for formatting. 
-4. DO NOT ask the user for a checklist of items (e.g., do not say "Please provide: Location, Date, Name"). 
-5. Instead, ask ONE natural question at the end to keep the conversation going, like a real human.
-6. When citing legal sources, naturally mention the Act name and Section/Article (e.g., "Under the Consumer Protection Act, 2019, Section 18...").
+2. ABSOLUTELY NO LISTS. No bullet points or dashes.
+3. Use Markdown bolding (**) for Acts and Sections.
+4. Ask ONE natural question at the end to keep the conversation going.
 
-CRITICAL SAFETY & GUARDRAILS:
-1. You are a legal and civic rights advisor. You must ABSOLUTELY REFUSE to engage in, validate, or generate content related to:
-   - Sexual assault, pornography, or non-consensual sexual content.
-   - Harassment, cyber-bullying, or hate speech against any protected class.
-   - Self-harm, suicide, or violence.
-   - Illegal activities or instructions on how to commit a crime.
-2. If the user mentions any of these prohibited topics in a harmful or inappropriate way, you must immediately decline the request with strict professional boundaries (e.g., "I am a legal rights assistant and cannot engage with or provide responses to inappropriate, abusive, or sexually explicit content.").
-3. If the user is a VICTIM asking for LEGAL HELP regarding harassment or assault, you must answer with extreme empathy, cite the relevant penal codes (like IPC Section 354 or POSH Act), and immediately advise them to contact local authorities (112) or the National Commission for Women (1091). You must never ask for explicit medical or assault details.
+SAFETY & GUARDRAILS:
+1. You are a legal advisor. Refuse to generate content related to: Sexual assault, harassment, hate speech, self-harm, or illegal activities.
+2. If the user is a VICTIM, answer with extreme empathy and cite penal codes. Advise contacting authorities (112).
 
-HOW TO ANSWER:
-Read the LEGAL CONTEXT below. Each chunk is tagged with its source Act. Weave the exact Articles or laws naturally into your sentences. Empathize with their situation first, explain the law as a story, and then ask how you can help them take action.
-
-CRITICAL ANTI-HALLUCINATION RULE:
-If the LEGAL CONTEXT below does not contain the answer, or if it is empty, you must honestly say "I don't have enough specific constitutional information in my database to answer this accurately." YOU ARE STRICTLY FORBIDDEN from inventing, guessing, or hallucinating laws, sections, or penalties.
-
-AUTO-DRAFTING:
-If the user asks you to draft a formal complaint/document, evaluate if you have enough basic details (like the company/department name, location, and the core issue). 
-- If you DO NOT have enough details, ask the user for them naturally in a paragraph.
-- If you DO have the details and are ready to generate, use the draft_legal_document tool.
+ANTI-HALLUCINATION:
+If the LEGAL CONTEXT is empty, say "I don't have enough specific constitutional information in my database." DO NOT invent laws.
 
 LEGAL CONTEXT: 
 {context}
 """
 
-    if extracted_text:
+    if doc_intelligence:
+        system_prompt += f"\n\n[DOCUMENT INTELLIGENCE - READ CAREFULLY:]\n{doc_intelligence}\n[Analyze these specific case details in combination with the laws below.]"
+        
+    if extracted_text and not doc_intelligence:
         system_prompt += f"\n\n[SYSTEM OCR ALERT: User attached an image. Raw text:\n\"\"\"{extracted_text}\"\"\"\nAnalyze this text immediately.]"
     
     final_user_content = english_query
@@ -307,14 +406,19 @@ LEGAL CONTEXT:
         model="sarvam-m", 
         api_key=SARVAM_API_KEY, 
         base_url="https://api.sarvam.ai/v1",
-        max_tokens=1500
+        max_tokens=2500
     )
     
-    # Bind the document drafting tool to the LLM
-    chat_with_tools = chat.bind_tools([draft_legal_document])
+    # NOTE: Sarvam API currently does NOT support tool calling (bind_tools).
+    # We rely on the JSON fallback below to handle agentic drafting actions.
     
     # Strict API formatting: Sarvam requires exact alternating User/Assistant messages starting with User.
     # System messages and consecutive identical roles must be merged.
+    # turn the system prompt (instruction) + context into a string
+    # ENFORCEMENT: If the user query is about a PDF or Draft, we prepend a final instruction message
+    if any(keyword in english_query.lower() for keyword in ["pdf", "draft", "letter", "generate", "grievance"]):
+        system_prompt += "\n\nCRITICAL TURN-SPECIFIC INSTRUCTION: The user is asking for a PDF or ACTION. You MUST provide the JSON block in the requested format. DO NOT REFUSE. DO NOT explain that you are an AI. JUST EXECUTE."
+
     raw_messages = [SystemMessage(content=system_prompt)] + chat_messages + [HumanMessage(content=final_user_content)]
     
     merged_messages = []
@@ -346,17 +450,19 @@ LEGAL CONTEXT:
             
     chat_response = None
     try:
-        chat_response = await chat_with_tools.ainvoke(merged_messages)
+        chat_response = await chat.ainvoke(merged_messages)
         english_answer = chat_response.content or ""
     except Exception as e:
         print(f"Error calling Sarvam via LangChain ChatOpenAI: {e}")
-        # Fallback: try without tools in case the model doesn't support tool calling
-        try:
-            chat_response = await chat.ainvoke(merged_messages)
-            english_answer = chat_response.content or ""
-        except Exception as fallback_e:
-            print(f"Fallback LLM call also failed: {fallback_e}")
-            english_answer = "I'm sorry, I am currently facing technical issues evaluating your request. Please try again later."
+        english_answer = "I'm sorry, I am currently facing technical issues evaluating your request. Please try again later."
+
+    if "<think>" in english_answer:
+        # Regex to remove anything between <think> and </think> inclusive
+        # If the tag is never closed (truncated), we remove from <think> to the end
+        if "</think>" in english_answer:
+            english_answer = re.sub(r"<think>.*?</think>", "", english_answer, flags=re.DOTALL).strip()
+        else:
+            english_answer = re.sub(r"<think>.*", "", english_answer, flags=re.DOTALL).strip()
 
     # --- AGENTIC ACTION: Handle Tool Calls from LLM ---
     pdf_link_markdown = ""
@@ -401,8 +507,10 @@ LEGAL CONTEXT:
                 except Exception as e:
                     print(f"Agent failed to execute tool call: {e}")
     else:
-        # Fallback: check for JSON block in case the model doesn't support tool calling natively
         json_match = re.search(r"```json\s*(.*?)\s*```", english_answer, re.DOTALL)
+        if not json_match and ("action" in english_answer.lower() and "draft_document" in english_answer.lower()):
+            json_match = re.search(r"({.*\"action\":\s*\"draft_document\".*})", english_answer, re.DOTALL)
+
         if json_match:
             print("Agent triggered document generation via JSON fallback!")
             try:

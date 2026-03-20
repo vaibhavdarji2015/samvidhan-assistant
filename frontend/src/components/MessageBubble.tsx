@@ -8,39 +8,52 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
   const isSystem = msg.role === 'system';
 
   return (
-    <div id={`msg-${msg.id}`} className={`flex gap-3 max-w-[85%] animate-in slide-in-from-bottom-2 ${isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}>
+    <div id={`msg-${msg.id}`} className={`flex gap-3 max-w-[85%] bubble-in ${isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}>
       {/* Avatar */}
-      <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${isUser ? 'bg-blue-100 text-blue-600' :
-        isSystem ? 'bg-red-100 text-red-600' : 'bg-slate-200 text-slate-600'
+      <div className={`shrink-0 w-9 h-9 rounded-xl shadow-md flex items-center justify-center transition-all ${isUser ? 'bg-primary text-white' :
+        isSystem ? 'bg-red-500 text-white' : 'bg-secondary text-white'
         }`}>
-        {isUser ? <User className="w-5 h-5" /> : isSystem ? <AlertCircle className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
+        {isUser ? <User className="w-5.5 h-5.5" /> : isSystem ? <AlertCircle className="w-5.5 h-5.5" /> : <Bot className="w-5.5 h-5.5" />}
       </div>
 
       {/* Bubble Content */}
       <div className={`flex flex-col gap-2 ${isUser ? 'items-end' : 'items-start'}`}>
-        <div className={`p-4 rounded-2xl shadow-sm ${isUser ? 'bg-blue-600 text-white rounded-tr-none' :
-          isSystem ? 'bg-red-50 border border-red-100 text-red-700 rounded-tl-none text-sm font-medium' :
-            'bg-white border border-slate-200 text-slate-800 rounded-tl-none'
+        <div className={`p-4 rounded-3xl shadow-lg transition-all ${isUser ? 'bg-primary text-white rounded-tr-none' :
+          isSystem ? 'bg-red-50 border border-red-200 text-red-700 rounded-tl-none text-sm font-medium' :
+            'glass-card text-slate-800 rounded-tl-none'
           }`}>
-          <p className="whitespace-pre-wrap leading-relaxed">
+          <p className="whitespace-pre-wrap leading-relaxed text-[15px]">
             {
-              msg.content.split(/(\[.*?\]\(.*?\))/g).map((part, i) => {
-                const match = part.match(/\[(.*?)\]\((.*?)\)/);
-                if (match) {
-                  const label = match[1];
-                  const url = match[2];
+              msg.content.split(/(\[.*?\]\(.*?\))|(\*\*.*?\*\*)|(\*.*?\*)/g).map((part, i) => {
+                if (!part) return null;
+                const linkMatch = part.match(/\[(.*?)\]\((.*?)\)/);
+                const boldMatch = part.match(/\*\*(.*?)\*\*/);
+                const italicMatch = part.match(/\*(.*?)\*/);
+
+                if (linkMatch) {
+                  const label = linkMatch[1];
+                  const url = linkMatch[2];
                   return (
                     <a
                       key={i}
                       href={url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 mt-2 px-3 py-2 bg-white text-blue-700 rounded-lg shadow-sm border border-blue-100 font-semibold hover:bg-blue-50 transition-all"
+                      className="inline-flex items-center gap-2 mt-2 px-4 py-2 bg-white/50 backdrop-blur-sm text-secondary rounded-xl shadow-sm border border-secondary/20 font-bold hover:bg-secondary hover:text-white transition-all group/link"
                     >
-                      <File className="w-5 h-5" /> {label}
+                      <File className="w-4.5 h-4.5 group-hover/link:animate-pulse" /> {label}
                     </a>
                   );
                 }
+                
+                if (boldMatch) {
+                  return <strong key={i} className="font-bold text-slate-900">{boldMatch[1]}</strong>;
+                }
+
+                if (italicMatch) {
+                  return <em key={i} className="italic text-slate-700">{italicMatch[1]}</em>;
+                }
+
                 return <span key={i}>{part}</span>;
               })
             }

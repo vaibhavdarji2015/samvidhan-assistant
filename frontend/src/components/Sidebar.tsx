@@ -75,29 +75,29 @@ export function Sidebar() {
 
     return (
         <>
-            <div className="w-[280px] bg-slate-50 border-r border-slate-200 flex flex-col h-screen text-slate-900 shrink-0 hidden md:flex">
+            <div className="w-[280px] glass-sidebar flex flex-col h-screen text-slate-900 shrink-0 hidden md:flex">
                 <div className="p-4 mt-2">
                     <button
                         onClick={createNewChat}
-                        className="w-full h-11 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-sm rounded-2xl transition-colors flex items-center px-4 font-medium"
+                        className="w-full h-12 bg-primary hover:bg-orange-800 text-white shadow-lg shadow-orange-900/20 rounded-2xl transition-all active:scale-95 flex items-center px-5 font-semibold"
                     >
-                        <Plus className="w-5 h-5 mr-3 text-slate-500" />
-                        New chat
+                        <Plus className="w-5 h-5 mr-3" />
+                        New Consultation
                     </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-3 pb-4">
-                    <div className="text-xs font-semibold text-slate-500 mb-3 px-2 mt-4 transition-all">Recent</div>
-                    <div className="space-y-0.5">
+                <div className="flex-1 overflow-y-auto px-3 pb-4 custom-scrollbar">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-3 px-3 mt-6 transition-all">Recent Conversations</div>
+                    <div className="space-y-1">
                         {history.length === 0 ? (
-                            <p className="text-sm text-slate-500 px-2 py-4">No recent chats</p>
+                            <p className="text-sm text-slate-400 px-3 py-4 italic">No history yet</p>
                         ) : (
                             history.map((chat) => (
                                 <div
                                     key={chat.chatId}
-                                    className={`w-full text-left px-3 py-3 rounded-xl transition-colors flex items-center justify-between group relative ${activeChatId === chat.chatId
-                                        ? 'bg-blue-50 text-blue-900 font-semibold ring-1 ring-blue-100'
-                                        : 'text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                                    className={`w-full text-left px-3 py-3 rounded-xl transition-all flex items-center justify-between group relative ${activeChatId === chat.chatId
+                                        ? 'bg-white/80 shadow-sm text-slate-900 font-semibold ring-1 ring-slate-200'
+                                        : 'text-slate-500 hover:bg-white/40 hover:text-slate-900'
                                         }`}
                                 >
                                     {editingChatId === chat.chatId ? (
@@ -133,7 +133,7 @@ export function Sidebar() {
                                                             <MoreHorizontal className="w-4 h-4" />
                                                         </button>
                                                     </DropdownMenuTrigger>
-                                                    <DropdownMenuContent align="start" className="w-40">
+                                                    <DropdownMenuContent align="start" className="w-40 bg-white shadow-xl border-slate-200">
                                                         <DropdownMenuItem
                                                             className="cursor-pointer"
                                                             onClick={(e) => {

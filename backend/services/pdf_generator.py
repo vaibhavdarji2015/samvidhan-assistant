@@ -18,9 +18,28 @@ def generate_legal_document_pdf(
     Generates a universal formal legal document (RTI, FIR draft, Grievance, etc.) 
     and securely uploads it to Google Cloud Storage.
     """
+    # --- Automatic Cleanup: Keep local storage lean ---
+    try:
+        current_static_dir = os.path.join(os.getcwd(), "static", "generated")
+        if os.path.exists(current_static_dir):
+            now = datetime.now().timestamp()
+            for f in os.listdir(current_static_dir):
+                file_path = os.path.join(current_static_dir, f)
+                # If file is older than 1 hour (3600 seconds), delete it
+                if os.path.getmtime(file_path) < now - 3600:
+                    try: os.remove(file_path)
+                    except: pass
+    except Exception as cleanup_e:
+        print(f"⚠️ Local PDF cleanup failed: {cleanup_e}")
+
     try:
         def safe_str(s: str) -> str:
             if not s: return ""
+            # 1. Strip Markdown bold/italics
+            s = s.replace("**", "").replace("*", "")
+            # 2. Fix smart quotes/symbols for Latin-1 (Arial)
+            s = s.replace('’', "'").replace('‘', "'").replace('”', '"').replace('“', '"').replace('—', '-')
+            # 3. Final encoding safety
             return s.encode('latin-1', 'replace').decode('latin-1')
 
         pdf = FPDF()
@@ -47,8 +66,20 @@ def generate_legal_document_pdf(
         pdf.ln(4)
 
         # --- Body ---
+        # Cleanup: Remove duplicate salutation/signature if present in body
+        clean_body = body_text.strip()
+        if clean_body.lower().startswith("respected sir"):
+            # Remove the first line if it's the salutation
+            lines = clean_body.split('\n', 1)
+            if len(lines) > 1:
+                clean_body = lines[1].strip()
+        
+        # Remove trailing signatures if the AI added them
+        if "sincerely" in clean_body.lower():
+            clean_body = re.split(r"(?i)sincerely", clean_body)[0].strip()
+
         pdf.set_font("Arial", size=11)
-        pdf.multi_cell(0, 6, txt=f"Respected Sir/Madam,\n\n{safe_str(body_text)}")
+        pdf.multi_cell(0, 6, txt=f"Respected Sir/Madam,\n\n{safe_str(clean_body)}")
         pdf.ln(6)
 
         # --- Evidence Section ---
@@ -83,15 +114,26 @@ def generate_legal_document_pdf(
         pdf.output(filepath)
 
         # --- Save and Upload ---
-        storage_client = storage.Client()
-        bucket = storage_client.bucket(GCS_BUCKET_NAME)
-        blob = bucket.blob(f"generated_documents/{filename}")
-        blob.upload_from_filename(filepath)
+        # 1. Ensure local static directory exists for fallback
+        static_dir = os.path.join(os.getcwd(), "static", "generated")
+        os.makedirs(static_dir, exist_ok=True)
+        local_path = os.path.join(static_dir, filename)
         
-        if os.path.exists(filepath):
-            os.remove(filepath)
-
-        return f"https://storage.googleapis.com/{GCS_BUCKET_NAME}/generated_documents/{filename}"
+        # Save locally FIRST as a backup
+        pdf.output(local_path)
+        
+        try:
+            storage_client = storage.Client()
+            bucket = storage_client.bucket(GCS_BUCKET_NAME)
+            blob = bucket.blob(f"generated_documents/{filename}")
+            blob.upload_from_filename(local_path)
+            
+            # If upload successful, return GCS URL and cleanup local if desired (keeping it for now for robustness)
+            return f"https://storage.googleapis.com/{GCS_BUCKET_NAME}/generated_documents/{filename}"
+        except Exception as upload_e:
+            print(f"⚠️ GCS Upload failed (Billing/Account issues likely). Falling back to Local URL: {upload_e}")
+            # Fallback to serving from our own local FastAPI server
+            return f"http://localhost:8000/static/generated/{filename}"
 
     except Exception as e:
         print(f"PDF Generation Failed: {e}")

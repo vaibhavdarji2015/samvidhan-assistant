@@ -49,7 +49,6 @@ async def ask_constitution_audio(
     user: dict = Depends(get_current_user)
 ):
     try:
-        # Parse the incoming stringified chat history array from React
         raw_history = json.loads(chat_history_str)
         chat_history = [Message(**msg) for msg in raw_history]
 
@@ -58,7 +57,7 @@ async def ask_constitution_audio(
         files = {"file": (audio_file.filename, await audio_file.read(), audio_file.content_type)}
         stt_headers = {"API-Subscription-Key": SARVAM_API_KEY}
         
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:
             stt_response = await client.post(stt_url, files=files, headers=stt_headers)
             stt_response.raise_for_status()
         

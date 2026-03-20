@@ -1,11 +1,10 @@
 from fastapi import FastAPI
+import os
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 
-# Import your routers
 from api.routes import chat, upload, document
-
-# Import your initialization logic
 from services.rag import init_vector_store, cleanup_vector_store
 
 @asynccontextmanager
@@ -17,18 +16,21 @@ async def lifespan(app: FastAPI):
     cleanup_vector_store()
 
 app = FastAPI(
-    lifespan=lifespan, 
+    lifespan=lifespan,
     title="The Samvidhan Assistant API",
     description="Backend for Constitutional Rights & Civic Issue Resolution in Ahmedabad"
 )
 
+# Ensure static directory exists
+os.makedirs("static/generated", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    # Ensure your Firebase hosting domain is here!
     allow_origins=[
-        "http://localhost:5173", 
-        "https://tensile-splice-457106-j7.web.app"
+        "http://localhost:5173",
+        "https://samvidhan-assistant-a2d34.web.app"
     ],
     allow_credentials=True,
     allow_methods=["*"],

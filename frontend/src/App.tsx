@@ -127,14 +127,16 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen w-full bg-white flex font-sans overflow-hidden">
+    <div className="h-screen w-full flex font-sans overflow-hidden">
       <ChatContext.Provider value={chatState}>
         <Sidebar />
-        <div className="flex-1 flex flex-col h-screen overflow-hidden bg-white">
+        <div className="flex-1 flex flex-col h-screen overflow-hidden">
           <ChatHeader language={language} setLanguage={setLanguage} />
-          <div className="flex-1 w-full mx-auto flex flex-col overflow-hidden px-4 md:px-0 relative pt-2">
+          <div className="flex-1 w-full mx-auto flex flex-col overflow-hidden px-4 md:px-6 relative pt-4">
             <MessageList />
-            <ChatInput />
+            <div className="pb-6 pt-2">
+              <ChatInput />
+            </div>
           </div>
         </div>
       </ChatContext.Provider>

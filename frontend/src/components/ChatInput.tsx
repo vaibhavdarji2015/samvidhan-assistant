@@ -68,39 +68,39 @@ export function ChatInput() {
   };
 
   return (
-    <div className="p-4 bg-white border-t border-slate-100 rounded-b-2xl shrink-0">
+    <div className="p-4 glass-card rounded-2xl shadow-lg border-white/20">
       {pendingAttachments.length > 0 && (
-        <div className="mb-3 flex flex-wrap gap-3">
+        <div className="mb-4 flex flex-wrap gap-3">
           {pendingAttachments.map((attachment, idx) => (
-            <div key={idx} className="p-2 pr-3 bg-blue-50/50 border border-blue-100 rounded-xl flex items-center gap-3 w-fit animate-in fade-in shadow-sm">
+            <div key={idx} className="p-2 pr-4 bg-white/40 backdrop-blur-sm border border-white/40 rounded-xl flex items-center gap-3 w-fit animate-in zoom-in-95 shadow-sm">
               {attachment.type === 'image' && (
-                <img src={attachment.previewUrl} alt="preview" className="w-12 h-12 object-cover rounded-md border border-slate-200 shadow-sm" />
+                <img src={attachment.previewUrl} alt="preview" className="w-12 h-12 object-cover rounded-lg border border-slate-200" />
               )}
               {attachment.type === 'video' && (
-                <video src={attachment.previewUrl} className="w-12 h-12 object-cover rounded-md border border-slate-200 shadow-sm" />
+                <video src={attachment.previewUrl} className="w-12 h-12 object-cover rounded-lg border border-slate-200" />
               )}
               {attachment.type === 'document' && (
-                <div className="w-12 h-12 bg-white flex flex-col items-center justify-center rounded-md border border-slate-200 shadow-sm text-blue-600"><FileText className="w-6 h-6" /></div>
+                <div className="w-12 h-12 bg-white flex flex-col items-center justify-center rounded-lg border border-slate-200 text-secondary"><FileText className="w-6 h-6" /></div>
               )}
 
               <div className="flex flex-col mr-2">
-                <span className="text-sm text-slate-700 font-semibold truncate max-w-[120px]">{attachment.file.name}</span>
-                <span className="text-xs text-slate-500 capitalize">{attachment.type}</span>
+                <span className="text-[13px] text-slate-800 font-bold truncate max-w-[140px]">{attachment.file.name}</span>
+                <span className="text-[10px] text-slate-500 uppercase font-bold tracking-tight">{attachment.type}</span>
               </div>
 
-              <Button variant="ghost" size="icon" type="button" onClick={() => removeAttachment(idx)} className="h-8 w-8 rounded-full text-slate-400 hover:text-red-600 hover:bg-red-50 ml-auto transition-colors"><X className="w-4 h-4" /></Button>
+              <Button variant="ghost" size="icon" type="button" onClick={() => removeAttachment(idx)} className="h-7 w-7 rounded-full text-slate-400 hover:text-red-600 hover:bg-red-50 ml-auto transition-all"><X className="w-4 h-4" /></Button>
             </div>
           ))}
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="flex gap-3 items-end w-full">
+      <form onSubmit={handleSubmit} className="flex gap-4 items-center w-full">
         {/* Hidden File Input */}
         <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*,video/*,.pdf" multiple />
 
         {/* Attachment Button */}
-        <Button variant="ghost" size="icon" type="button" onClick={() => fileInputRef.current?.click()} disabled={isPending || isRecording} className="h-[48px] w-[48px] text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all mb-1 shrink-0">
-          <Paperclip className="w-5 h-5" />
+        <Button variant="ghost" size="icon" type="button" onClick={() => fileInputRef.current?.click()} disabled={isPending || isRecording} className="h-12 w-12 text-slate-400 hover:text-primary hover:bg-orange-50 rounded-xl transition-all shrink-0">
+          <Paperclip className="w-5.5 h-5.5" />
         </Button>
 
         {/* Text Area & Mic Button Container */}
@@ -109,10 +109,9 @@ export function ChatInput() {
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(e as unknown as React.FormEvent); } }}
-            placeholder="Describe your issue or upload evidence..."
+            placeholder="Type your legal query or attach evidence..."
             disabled={isPending || isRecording}
-            // Note: Added pr-12 here so typed text doesn't hide behind the mic button!
-            className="w-full max-h-32 min-h-[56px] p-4 pr-12 resize-none border-slate-200 rounded-xl bg-slate-50 outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 transition-all disabled:opacity-60 text-base"
+            className="w-full max-h-32 min-h-[52px] p-4 pr-12 resize-none border-slate-200 rounded-xl bg-white shadow-inner focus-visible:ring-2 focus-visible:ring-primary/20 transition-all disabled:opacity-60 text-[15px] font-medium"
             rows={1}
           />
 
@@ -122,15 +121,14 @@ export function ChatInput() {
             type="button"
             onClick={isRecording ? stopRecording : startRecording}
             disabled={isPending}
-            // Changed from right-[88px] to right-2 so it anchors to the Textarea instead
-            className={`absolute right-2 bottom-2 w-10 h-10 rounded-lg transition-all ${isRecording ? 'bg-red-100 text-red-600 hover:bg-red-100 hover:text-red-700 animate-pulse' : 'text-slate-400 hover:bg-slate-200 hover:text-slate-600'}`}
+            className={`absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-lg transition-all ${isRecording ? 'bg-red-100 text-red-600 animate-pulse' : 'text-slate-400 hover:bg-slate-100'}`}
           >
             {isRecording ? <Square className="w-5 h-5 fill-current" /> : <Mic className="w-5 h-5" />}
           </Button>
         </div>
 
         {/* Send Button */}
-        <Button type="submit" disabled={isPending || (!text.trim() && pendingAttachments.length === 0) || isRecording} className="bg-blue-600 text-white h-[56px] w-[64px] rounded-xl hover:bg-blue-700 transition-all flex items-center justify-center shrink-0">
+        <Button type="submit" disabled={isPending || (!text.trim() && pendingAttachments.length === 0) || isRecording} className="bg-primary text-white h-12 w-14 rounded-xl hover:bg-orange-800 shadow-md shadow-orange-900/20 active:scale-95 transition-all flex items-center justify-center shrink-0">
           <Send className="w-5 h-5" />
         </Button>
       </form>

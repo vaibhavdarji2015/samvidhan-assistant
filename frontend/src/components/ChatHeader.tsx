@@ -57,13 +57,19 @@ export function ChatHeader({ language, setLanguage }: { language: string, setLan
   }
 
   return (
-    <div className="flex items-center gap-4 p-6 border-b border-slate-100 shrink-0 bg-white rounded-t-2xl">
+    <div className="flex items-center gap-5 p-5 glass-card shrink-0 rounded-t-3xl mx-4 mt-4 shadow-lg shadow-slate-200/40 border-b-0">
       <div className="flex-shrink-0">
-        <img src="/samvidhan-icon.svg" alt="Samvidhan Logo" className="w-12 h-12 drop-shadow-sm hover:scale-105 transition-transform" />
+        <div className="p-1 bg-white/50 rounded-2xl shadow-inner border border-white/40">
+          <img src="/samvidhan-icon.svg" alt="Samvidhan Logo" className="w-11 h-11 drop-shadow-md hover:scale-110 transition-transform cursor-pointer" />
+        </div>
       </div>
-      <div>
-        <h1 className="text-xl font-bold text-slate-800 tracking-tight">Samvidhan Agent</h1>
-        <p className="text-slate-500 text-sm">Civic Rights & Issue Resolution</p>
+      <div className="flex flex-col">
+        <h1 className="text-2xl font-bold premium-gradient-text tracking-tight leading-tight">
+          Samvidhan Assistant
+        </h1>
+        <p className="text-slate-500 text-xs font-semibold uppercase tracking-widest opacity-80">
+          Professional Legal Intelligence
+        </p>
       </div>
       <div className="ml-auto flex items-center gap-3">
         <Popover open={open} onOpenChange={setOpen}>
